@@ -25,8 +25,8 @@ def main():
         },
         "usuario": None,
         "vendas": [],
-        "grupos": {},
-        "produtos": produtos  # já existente em funcoes.py
+        "grupos": grupos.copy(),    # mantém os grupos pré-existentes
+        "produtos": produtos.copy() # mantém os produtos pré-existentes
     }
 
     # Login
@@ -56,7 +56,7 @@ def main():
             fechar_caixa(estado)
 
         elif op == '5':
-            menu_cadastros(estado["grupos"])
+            menu_cadastros(estado)
 
         elif op == '0':
             break

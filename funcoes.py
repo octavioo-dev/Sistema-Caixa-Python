@@ -70,71 +70,99 @@ def buscar_produto(codigo):
     return produtos.get(codigo)
 
 # =========================
-# LOGIN
+# LOGIN DE USUÁRIO
 # =========================
-
 def login_user(max_tentativa=3):
+    """
+    Solicita login do usuário com limite de tentativas.
+    Retorna o nome do usuário autenticado ou None se falhar.
+    """
     tentativas = 0
 
     while tentativas < max_tentativa:
         limpar_tela()
         print('--- Sistema de Controle de Caixa ---\n')
         print('Faça o Login para continuar\n')
-        user = input('Usuário: ').strip().lower()
-        senha = getpass.getpass('Senha: ')
 
+        user = input('Usuário: ').strip().lower()
+        senha = getpass.getpass('Senha: ').strip()
+
+        # Verifica se o usuário existe e senha confere
         if user in usuarios and usuarios[user] == senha:
-            print(f'\n✅ Bem-vindo, {user}!')
+            print(f'\n✅ Bem-vindo(a), {user}!')
             pausar()
-            return user
+            return user  # Usuário autenticado
 
         tentativas += 1
         print(f'\n❌ Usuário ou senha inválidos ({tentativas}/{max_tentativa})')
-        pausar()
+        pausar('Tente novamente...')
 
-    print('\n🚫 Tentativas esgotadas.')
+    # Excede tentativas
+    print('\n🚫 Número máximo de tentativas atingido. Saindo do sistema.')
     pausar()
-    return False
+    return None
+
 
 
 # =========================
 # CAIXA
 # =========================
 
-def abrir_caixa(caixa_aberto, data_fechamento):
+def abrir_caixa(estado):
+    """
+    Abre o caixa se ainda não estiver aberto e se o caixa do dia atual
+    não tiver sido fechado. Atualiza o estado da aplicação.
+    """
     hoje = date.today()
+    caixa = estado["caixa"]
 
-    if data_fechamento == hoje:
+    # Verifica se o caixa já foi fechado hoje
+    if caixa["fechamento"] == hoje:
         print('🚫 Caixa do dia já foi fechado.')
         pausar()
-        return caixa_aberto, data_fechamento
+        return
 
-    if caixa_aberto:
+    # Verifica se o caixa já está aberto
+    if caixa["aberto"]:
         print('⚠️ Caixa já está aberto.')
         pausar()
-        return caixa_aberto, data_fechamento
+        return
 
-    print(f'🔓 Caixa aberto em {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
+    # Abrindo caixa
+    caixa["aberto"] = True
+    caixa["abertura"] = datetime.now()
+    caixa["fechamento"] = None
+    print(f'🔓 Caixa aberto em {caixa["abertura"].strftime("%d/%m/%Y %H:%M:%S")}')
     pausar()
-    return True, None
+
 
 
 def registrar_venda(estado):
-    if not caixa_aberto:
+    """
+    Registra uma venda enquanto o caixa estiver aberto.
+    Atualiza estoque, total da venda e registra no estado.
+    """
+    caixa = estado["caixa"]
+    usuario_logado = estado["usuario"]
+    vendas = estado["vendas"]
+    produtos = estado["produtos"]
+
+    if not caixa["aberto"]:
         print('🚫 Caixa fechado.')
         pausar()
         return
 
     limpar_tela()
     print('--- Registrar Venda ---')
-    print('Digite o código do produto (0 para finalizar)\n')
+    
 
     itens = []
     total = 0
 
     while True:
+        print('\nDigite 0 para finalizar a venda\n')
         codigo = input('Código do produto: ').strip()
-
+        
         # Finaliza venda
         if codigo == '0':
             break
@@ -146,9 +174,9 @@ def registrar_venda(estado):
 
         produto = produtos[codigo]
 
-        # Quantidade
+        # Solicita quantidade
         try:
-            qtd = int(input('Quantidade: '))
+            qtd = int(input('Quantidade: ').strip())
             if qtd <= 0:
                 print('❌ Quantidade inválida.')
                 continue
@@ -156,35 +184,37 @@ def registrar_venda(estado):
             print('❌ Digite um número válido.')
             continue
 
-        # Estoque
+        # Verifica estoque
         if produto['estoque'] < qtd:
             print('❌ Estoque insuficiente.')
             continue
 
-        # Cálculos
+        # Cálculo do subtotal
         subtotal = produto['preco'] * qtd
         total += subtotal
 
-        # Baixa estoque
+        # Baixa no estoque
         produto['estoque'] -= qtd
 
+        # Adiciona item à venda
+        # Após calcular subtotal e adicionar item
         itens.append({
             'codigo': codigo,
             'produto': produto['nome'],
             'quantidade': qtd,
-            'preco_unitario': produto['preco'],
-            'subtotal': subtotal
+         'preco_unitario': produto['preco'],
+         'subtotal': subtotal
         })
 
-        print('✅ Item adicionado.\n')
+        print(f'✅ Item adicionado: {produto["nome"]} x{qtd} R$ {subtotal:.2f}\n')
 
-    # Venda cancelada
+    # Se não houver itens, cancela a venda
     if not itens:
         print('Nenhum item registrado.')
         pausar()
         return
 
-    # Registra venda
+    # Registra venda no estado
     vendas.append({
         'itens': itens,
         'total': total,
@@ -192,22 +222,20 @@ def registrar_venda(estado):
         'data_hora': datetime.now()
     })
 
-    # Resumo
+    # Resumo da venda
     limpar_tela()
     print('--- Venda Finalizada ---')
     for item in itens:
-        print(
-            f"- {item['produto']} "
-            f"x{item['quantidade']} "
-            f"R$ {item['subtotal']:.2f}"
-        )
+        print(f"- {item['produto']} x{item['quantidade']} R$ {item['subtotal']:.2f}")
 
     print(f'\nTOTAL: R$ {total:.2f}')
     pausar()
 
 
-
 def total_caixa(vendas):
+    """
+    Exibe todas as vendas registradas e o total acumulado.
+    """
     limpar_tela()
 
     if not vendas:
@@ -217,30 +245,36 @@ def total_caixa(vendas):
 
     total = 0
     for i, venda in enumerate(vendas, 1):
-        print(f'\nVenda {i} - {venda["data_hora"].strftime("%d/%m/%Y %H:%M")}')
+        print(f'\n📄 Venda {i} - {venda["data_hora"].strftime("%d/%m/%Y %H:%M")}')
         for item in venda['itens']:
-            print(f"  {item['produto']} x{item['quantidade']} R$ {item['subtotal']:.2f}")
-        print(f"  Total: R$ {venda['total']:.2f}")
+            print(f"   {item['produto']} x{item['quantidade']} R$ {item['subtotal']:.2f}")
+        print(f"   Total: R$ {venda['total']:.2f}")
         total += venda['total']
 
     print('\n' + '-'*30)
-    print(f'TOTAL EM CAIXA: R$ {total:.2f}')
+    print(f'💰 TOTAL EM CAIXA: R$ {total:.2f}')
     pausar()
 
 
-def fechar_caixa(vendas, caixa_aberto):
+def fechar_caixa(estado):
     """
-    Exibe todas as vendas do dia, mostrando operador, data e hora, e realiza o fechamento.
+    Exibe todas as vendas do dia, mostrando operador, data e hora,
+    calcula o total e realiza o fechamento do caixa.
     """
-    if not caixa_aberto:
+    caixa = estado["caixa"]
+    vendas = estado["vendas"]
+
+    # Valida se o caixa está aberto
+    if not caixa["aberto"]:
         print('🚫 Caixa ainda não foi aberto.')
         pausar()
-        return caixa_aberto, None
+        return
 
+    # Valida se há vendas
     if not vendas:
         print('📭 Nenhuma venda registrada.')
         pausar()
-        return caixa_aberto, None
+        return
 
     limpar_tela()
     print('📊 FECHAMENTO DE CAIXA\n')
@@ -267,17 +301,21 @@ def fechar_caixa(vendas, caixa_aberto):
     print('-' * 40)
     print(f'💰 TOTAL DO CAIXA: R$ {total_geral:.2f}')
 
+    # Confirmação de fechamento
     confirmar = input('\nDeseja realmente fechar o caixa? (s/n): ').lower()
 
     if confirmar == 's':
         print('\n🔒 Caixa fechado com sucesso!')
+        caixa["aberto"] = False
+        caixa["fechamento"] = date.today()
+        caixa["abertura"] = None
         vendas.clear()
         pausar()
-        return False, date.today()
+        return
 
     print('\n❌ Fechamento cancelado.')
     pausar()
-    return caixa_aberto, None
+
 
 
 
@@ -285,48 +323,78 @@ def fechar_caixa(vendas, caixa_aberto):
 # CADASTROS
 # =========================
 
-def listar_grupos():
+def listar_grupos(estado):
+    """
+    Exibe todos os grupos cadastrados no sistema.
+    """
+    grupos = estado["grupos"]
+
+    if not grupos:
+        print("\n📭 Nenhum grupo cadastrado.")
+        pausar()
+        return
+
     print("\n--- Grupos Cadastrados ---")
     for codigo, dados in grupos.items():
         print(f"{codigo} - {dados['nome']}")
+    
+    pausar()
 
-def cadastrar_grupo():
+def cadastrar_grupo(estado):
+    """
+    Permite cadastrar um novo grupo, validando código e nome.
+    Atualiza o estado da aplicação.
+    """
+    grupos = estado["grupos"]
     limpar_tela()
     print('--- Cadastro de Grupo ---')
 
     while True:
         codigo = input('Código do grupo (0 para voltar): ').strip()
 
+        # Voltar ao menu
         if codigo == '0':
             return
 
+        # Validação de código numérico
         if not codigo.isdigit():
             print('❌ Código inválido.')
             continue
 
+        # Normaliza código (1 -> 01)
         codigo = normalizar_codigo(codigo)
 
+        # Verifica se já existe
         if codigo in grupos:
             print('❌ Já existe um grupo com esse código.')
             continue
 
+        # Nome do grupo
         nome = input('Nome do grupo: ').strip()
         if not nome:
             print('❌ O nome do grupo não pode ser vazio.')
             continue
 
-        grupos[codigo] = {
-            'nome': nome
-        }
+        # Adiciona ao estado
+        grupos[codigo] = {'nome': nome}
 
         print('✅ Grupo cadastrado com sucesso!')
         pausar()
         return
+    
+def cadastrar_produtos(estado):
+    """
+    Permite cadastrar um novo produto, garantindo código único,
+    grupo existente, nome não vazio, preço positivo e estoque válido.
+    Atualiza o estado da aplicação.
+    """
+    grupos = estado["grupos"]
+    produtos = estado["produtos"]
 
-def cadastrar_produtos():
     limpar_tela()
     print('--- Cadastro de Produto ---')
 
+    # Verifica se há grupos cadastrados
     if not grupos:
         print('❌ Nenhum grupo cadastrado!')
         pausar()
@@ -336,51 +404,41 @@ def cadastrar_produtos():
     for cod, g in grupos.items():
         print(f'{cod} - {g["nome"]}')
 
-    # Código do grupo
+    # Seleção de grupo
     while True:
         cod_grupo = input('Código do grupo (0 para voltar): ').strip()
-
         if cod_grupo == '0':
             return
-
         if not cod_grupo.isdigit():
             print('❌ Código inválido.')
             continue
-
         cod_grupo = normalizar_codigo(cod_grupo)
-
         if cod_grupo not in grupos:
             print('❌ Grupo não encontrado.')
             continue
-
         break
 
     # Código do produto
     while True:
         cod_prod = input('Código do produto: ').strip()
-
         if not cod_prod.isdigit():
             print('❌ Código inválido.')
             continue
-
         cod_prod = cod_prod.zfill(3)  # sempre 001, 002...
-
         codigo_completo = f'{cod_grupo}{cod_prod}'
-
         if codigo_completo in produtos:
             print('❌ Produto já cadastrado.')
             continue
-
         break
 
-    # ✅ VALIDAÇÃO DE NOME
+    # Nome do produto
     while True:
         nome = input('Nome do produto: ').strip()
         if nome:
             break
         print('❌ O nome do produto não pode ser vazio.')
 
-    # ✅ VALIDAÇÃO DE PREÇO
+    # Preço
     while True:
         preco_input = input('Preço do produto: R$ ').replace(',', '.').strip()
         try:
@@ -392,7 +450,7 @@ def cadastrar_produtos():
         except ValueError:
             print('❌ Preço inválido.')
 
-    # ✅ ESTOQUE
+    # Estoque
     while True:
         try:
             estoque = int(input('Quantidade em estoque: '))
@@ -403,6 +461,7 @@ def cadastrar_produtos():
         except ValueError:
             print('❌ Digite um número válido.')
 
+    # Adiciona produto ao estado
     produtos[codigo_completo] = {
         'nome': nome,
         'grupo': cod_grupo,
@@ -413,7 +472,14 @@ def cadastrar_produtos():
     print('✅ Produto cadastrado com sucesso!')
     pausar()
 
-def listar_produtos():
+def listar_produtos(estado):
+    """
+    Exibe todos os produtos cadastrados, mostrando código, nome,
+    grupo, preço e estoque.
+    """
+    produtos = estado["produtos"]
+    grupos = estado["grupos"]
+
     limpar_tela()
     print('--- Produtos Cadastrados ---')
 
@@ -434,43 +500,58 @@ def listar_produtos():
 
     pausar()
 
-def menu_produtos():
+def menu_produtos(estado):
+    """
+    Menu para listar produtos ou voltar ao menu principal.
+    """
     while True:
         limpar_tela()
         print("1 - Listar produtos")
         print("0 - Voltar")
 
-        opcao = input("Escolha: ")
+        opcao = input("Escolha: ").strip()
 
         if opcao == "1":
-            listar_produtos()
+            listar_produtos(estado)
         elif opcao == "0":
             return
+        else:
+            print('❌ Opção inválida.')
+            pausar()
 
-def menu_cadastros(grupos):
+def menu_cadastros(estado):
+    """
+    Menu de cadastros do sistema: grupos e produtos.
+    Todas as operações manipulam o estado centralizado.
+    """
     while True:
         limpar_tela()
+        print('--- MENU DE CADASTROS ---')
         print('1 - Cadastrar grupo')
         print('2 - Cadastrar produto')
         print('3 - Listar produtos')
         print('0 - Voltar')
 
-        op = input('Escolha: ')
+        op = input('Escolha: ').strip()
 
         if op == '1':
-            cadastrar_grupo()
+            cadastrar_grupo(estado)
         elif op == '2':
-            cadastrar_produtos(grupos)
+            cadastrar_produtos(estado)
         elif op == '3':
-            listar_produtos()
+            listar_produtos(estado)
         elif op == '0':
             break
         else:
-            print('Opção inválida.')
+            print('❌ Opção inválida.')
             pausar()
                       
-def verificar_estoque(codigo, quantidade):
-    produto = buscar_produto(codigo)
+def verificar_estoque(estado, codigo, quantidade):
+    """
+    Verifica se um produto existe e se há estoque suficiente.
+    Retorna (True, "") se tudo ok, ou (False, mensagem) em caso de erro.
+    """
+    produto = estado["produtos"].get(codigo)
     if not produto:
         return False, "Produto não encontrado."
 
@@ -479,9 +560,19 @@ def verificar_estoque(codigo, quantidade):
 
     return True, ""
 
-def baixar_estoque(codigo, quantidade):
-    produtos[codigo]["estoque"] -= quantidade
+def baixar_estoque(estado, codigo, quantidade):
+    """
+    Reduz a quantidade em estoque de um produto.
+    """
+    produto = estado["produtos"].get(codigo)
+    if produto:
+        produto["estoque"] -= quantidade
 
-def repor_estoque(codigo, quantidade):
-    produtos[codigo]["estoque"] += quantidade
+def repor_estoque(estado, codigo, quantidade):
+    """
+    Aumenta a quantidade em estoque de um produto.
+    """
+    produto = estado["produtos"].get(codigo)
+    if produto:
+        produto["estoque"] += quantidade
 
