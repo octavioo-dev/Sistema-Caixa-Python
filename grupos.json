@@ -1,0 +1,14 @@
+{
+    "01": {
+        "nome": "Computadores"
+    },
+    "02": {
+        "nome": "Notebooks"
+    },
+    "03": {
+        "nome": "Celulares"
+    },
+    "04": {
+        "nome": "Video Games"
+    }
+}

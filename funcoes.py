@@ -2,6 +2,7 @@ import os
 import msvcrt
 import getpass
 from datetime import datetime, date
+import json
 
 
 # =========================
@@ -14,47 +15,48 @@ usuarios = {
     'fernando': 'furiagamer'
 }
 
-grupos = {
-    "01": {
-        "nome": "Computadores"
-    },
-    "02": {
-        "nome": "Notebooks"
-    }
-}
+# =========================
+# UTILITÁRIOS JSON
+# =========================
+def salvar_json(arquivo, dados):
+    """
+    Salva o dicionário 'dados' em um arquivo JSON.
+    🔹 Substitui o arquivo existente.
+    🔹 Converte objetos datetime em string automaticamente.
+    """
+    try:
+        with open(arquivo, 'w', encoding='utf-8') as f:
+            json.dump(dados, f, ensure_ascii=False, indent=4, default=str)
+    except Exception as e:
+        print(f"❌ Erro ao salvar {arquivo}: {e}")
 
-produtos = {
-    "01001": {
-        "nome": "Pc Gamer 9° geração",
-        "grupo": "01",
-        "preco": 6599.99,
-        "estoque": 10
-    },
-    "01002": {
-        "nome": "Pc Gamer 7° geração",
-        "grupo": "01",
-        "preco": 4699.99,
-        "estoque": 14
-    },
-    "02001": {
-        "nome": "Notebook DELL i7",
-        "grupo": "02",
-        "preco": 3560.00,
-        "estoque": 5
-    },
-    "02002": {
-        "nome": "Notebook ASUS i5",
-        "grupo": "02",
-        "preco": 2677.99,
-        "estoque": 4
-    }
-}
+
+def carregar_json(arquivo, default=None):
+    """
+    Carrega dados de um arquivo JSON.
+    🔹 Retorna 'default' se o arquivo não existir ou estiver vazio/corrompido.
+    🔹 Datas salvas como string permanecerão como string.
+    """
+    if default is None:
+        default = {}
+
+    if not os.path.exists(arquivo):
+        return default
+
+    try:
+        with open(arquivo, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"❌ Erro ao carregar {arquivo}: {e}")
+        return default
+
 
 # =========================
 # FUNÇÕES UTILITÁRIAS
 # =========================
 
 def normalizar_codigo(codigo):
+    """Transforma código de 1 dígito em 2 dígitos, ex: 1 -> 01"""
     codigo = str(codigo).strip()
     if len(codigo) == 1:
         return f"0{codigo}"
@@ -66,8 +68,9 @@ def limpar_tela():
 def pausar(msg='Pressione ENTER para continuar...'):
     input(f'\n{msg}')
 
-def buscar_produto(codigo):
-    return produtos.get(codigo)
+def buscar_produto(estado, codigo):
+    return estado["produtos"].get(codigo)
+
 
 # =========================
 # LOGIN DE USUÁRIO
@@ -116,19 +119,25 @@ def abrir_caixa(estado):
     hoje = date.today()
     caixa = estado["caixa"]
 
-    # Verifica se o caixa já foi fechado hoje
-    if caixa["fechamento"] == hoje:
+    # Converter abertura/fechamento para date se vier do JSON
+    fechamento = caixa.get("fechamento")
+    if isinstance(fechamento, str):
+        try:
+            fechamento = datetime.fromisoformat(fechamento).date()
+        except:
+            fechamento = None
+
+    if fechamento == hoje:
         print('🚫 Caixa do dia já foi fechado.')
         pausar()
         return
 
-    # Verifica se o caixa já está aberto
-    if caixa["aberto"]:
+    if caixa.get("aberto"):
         print('⚠️ Caixa já está aberto.')
         pausar()
         return
 
-    # Abrindo caixa
+    # Abrir caixa
     caixa["aberto"] = True
     caixa["abertura"] = datetime.now()
     caixa["fechamento"] = None
@@ -141,6 +150,7 @@ def registrar_venda(estado):
     """
     Registra uma venda enquanto o caixa estiver aberto.
     Atualiza estoque, total da venda e registra no estado.
+    Salva vendas no JSON automaticamente.
     """
     caixa = estado["caixa"]
     usuario_logado = estado["usuario"]
@@ -154,7 +164,6 @@ def registrar_venda(estado):
 
     limpar_tela()
     print('--- Registrar Venda ---')
-    
 
     itens = []
     total = 0
@@ -197,13 +206,12 @@ def registrar_venda(estado):
         produto['estoque'] -= qtd
 
         # Adiciona item à venda
-        # Após calcular subtotal e adicionar item
         itens.append({
             'codigo': codigo,
             'produto': produto['nome'],
             'quantidade': qtd,
-         'preco_unitario': produto['preco'],
-         'subtotal': subtotal
+            'preco_unitario': produto['preco'],
+            'subtotal': subtotal
         })
 
         print(f'✅ Item adicionado: {produto["nome"]} x{qtd} R$ {subtotal:.2f}\n')
@@ -219,23 +227,27 @@ def registrar_venda(estado):
         'itens': itens,
         'total': total,
         'usuario': usuario_logado,
-        'data_hora': datetime.now()
+        'data_hora': datetime.now().isoformat()  # salva como string ISO
     })
+
+    # Salva vendas no JSON
+    salvar_json('vendas.json', vendas)
 
     # Resumo da venda
     limpar_tela()
     print('--- Venda Finalizada ---')
     for item in itens:
         print(f"- {item['produto']} x{item['quantidade']} R$ {item['subtotal']:.2f}")
-
     print(f'\nTOTAL: R$ {total:.2f}')
     pausar()
 
 
-def total_caixa(vendas):
+def total_caixa(estado):
     """
-    Exibe todas as vendas registradas e o total acumulado.
+    Exibe todas as vendas registradas, mostrando operador, itens, total da venda,
+    e calcula o total acumulado em caixa somando todos os itens de todas as vendas.
     """
+    vendas = estado["vendas"]
     limpar_tela()
 
     if not vendas:
@@ -243,16 +255,29 @@ def total_caixa(vendas):
         pausar()
         return
 
-    total = 0
+    total_caixa = 0  # total acumulado de todas as vendas
+
     for i, venda in enumerate(vendas, 1):
-        print(f'\n📄 Venda {i} - {venda["data_hora"].strftime("%d/%m/%Y %H:%M")}')
+        data_hora = venda["data_hora"]
+        if isinstance(data_hora, str):
+            try:
+                data_hora = datetime.fromisoformat(data_hora)
+            except:
+                data_hora = datetime.now()  # fallback
+
+        print(f'\n📄 Venda {i} - {data_hora.strftime("%d/%m/%Y %H:%M")} | Operador: {venda["usuario"]}')
+
+        total_venda = 0  # soma dos itens desta venda
         for item in venda['itens']:
             print(f"   {item['produto']} x{item['quantidade']} R$ {item['subtotal']:.2f}")
-        print(f"   Total: R$ {venda['total']:.2f}")
-        total += venda['total']
+            total_venda += item['subtotal']
+
+        print(f"   Total da venda: R$ {total_venda:.2f}")
+
+        total_caixa += total_venda  # acumula no total do caixa
 
     print('\n' + '-'*30)
-    print(f'💰 TOTAL EM CAIXA: R$ {total:.2f}')
+    print(f'💰 TOTAL EM CAIXA: R$ {total_caixa:.2f}')
     pausar()
 
 
@@ -264,13 +289,11 @@ def fechar_caixa(estado):
     caixa = estado["caixa"]
     vendas = estado["vendas"]
 
-    # Valida se o caixa está aberto
-    if not caixa["aberto"]:
+    if not caixa.get("aberto"):
         print('🚫 Caixa ainda não foi aberto.')
         pausar()
         return
 
-    # Valida se há vendas
     if not vendas:
         print('📭 Nenhuma venda registrada.')
         pausar()
@@ -282,17 +305,22 @@ def fechar_caixa(estado):
     total_geral = 0
 
     for i, venda in enumerate(vendas, start=1):
+        data_hora = venda["data_hora"]
+        if isinstance(data_hora, str):
+            try:
+                data_hora = datetime.fromisoformat(data_hora)
+            except:
+                data_hora = datetime.now()  # fallback
+
         print(
             f'🧾 Venda {i} | '
-            f'{venda["data_hora"].strftime("%d/%m/%Y %H:%M:%S")} | '
+            f'{data_hora.strftime("%d/%m/%Y %H:%M:%S")} | '
             f'Operador: {venda["usuario"]}'
         )
 
         for item in venda['itens']:
             print(
-                f'  - {item["produto"]} '
-                f'x{item["quantidade"]} '
-                f'R$ {item["subtotal"]:.2f}'
+                f'  - {item["produto"]} x{item["quantidade"]} R$ {item["subtotal"]:.2f}'
             )
             total_geral += item['subtotal']
 
@@ -301,7 +329,6 @@ def fechar_caixa(estado):
     print('-' * 40)
     print(f'💰 TOTAL DO CAIXA: R$ {total_geral:.2f}')
 
-    # Confirmação de fechamento
     confirmar = input('\nDeseja realmente fechar o caixa? (s/n): ').lower()
 
     if confirmar == 's':
@@ -343,41 +370,38 @@ def listar_grupos(estado):
 def cadastrar_grupo(estado):
     """
     Permite cadastrar um novo grupo, validando código e nome.
-    Atualiza o estado da aplicação.
+    Atualiza o estado da aplicação e salva no JSON.
     """
     grupos = estado["grupos"]
     limpar_tela()
     print('--- Cadastro de Grupo ---')
 
     while True:
+        # Solicita código do grupo
         codigo = input('Código do grupo (0 para voltar): ').strip()
-
-        # Voltar ao menu
-        if codigo == '0':
+        if codigo == '0':  # Voltar ao menu
             return
-
-        # Validação de código numérico
-        if not codigo.isdigit():
+        
+        if not codigo.isdigit():  # Código numérico
             print('❌ Código inválido.')
             continue
 
-        # Normaliza código (1 -> 01)
         codigo = normalizar_codigo(codigo)
 
-        # Verifica se já existe
-        if codigo in grupos:
+        if codigo in grupos:  # Código duplicado
             print('❌ Já existe um grupo com esse código.')
             continue
 
         # Nome do grupo
         nome = input('Nome do grupo: ').strip()
+
         if not nome:
             print('❌ O nome do grupo não pode ser vazio.')
             continue
 
-        # Adiciona ao estado
+        # Adiciona ao estado e salva
         grupos[codigo] = {'nome': nome}
-
+        salvar_json('grupos.json', grupos)
         print('✅ Grupo cadastrado com sucesso!')
         pausar()
         return
@@ -386,7 +410,7 @@ def cadastrar_produtos(estado):
     """
     Permite cadastrar um novo produto, garantindo código único,
     grupo existente, nome não vazio, preço positivo e estoque válido.
-    Atualiza o estado da aplicação.
+    Atualiza o estado e salva no JSON.
     """
     grupos = estado["grupos"]
     produtos = estado["produtos"]
@@ -394,7 +418,6 @@ def cadastrar_produtos(estado):
     limpar_tela()
     print('--- Cadastro de Produto ---')
 
-    # Verifica se há grupos cadastrados
     if not grupos:
         print('❌ Nenhum grupo cadastrado!')
         pausar()
@@ -461,16 +484,17 @@ def cadastrar_produtos(estado):
         except ValueError:
             print('❌ Digite um número válido.')
 
-    # Adiciona produto ao estado
+    # Adiciona produto ao estado e salva
     produtos[codigo_completo] = {
         'nome': nome,
         'grupo': cod_grupo,
         'preco': preco,
         'estoque': estoque
     }
-
+    salvar_json('produtos.json', produtos)
     print('✅ Produto cadastrado com sucesso!')
     pausar()
+
 
 def listar_produtos(estado):
     """

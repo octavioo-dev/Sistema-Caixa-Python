@@ -1,0 +1,50 @@
+{
+    "01001": {
+        "nome": "Pc Gamer 9° geração",
+        "grupo": "01",
+        "preco": 6599.99,
+        "estoque": 10
+    },
+    "01002": {
+        "nome": "Pc Gamer 7° geração",
+        "grupo": "01",
+        "preco": 4699.99,
+        "estoque": 14
+    },
+    "02001": {
+        "nome": "Notebook DELL i7",
+        "grupo": "02",
+        "preco": 3560.0,
+        "estoque": 5
+    },
+    "02002": {
+        "nome": "Notebook ASUS i5",
+        "grupo": "02",
+        "preco": 2677.99,
+        "estoque": 4
+    },
+    "03001": {
+        "nome": "Iphone 16 PRO MAX",
+        "grupo": "03",
+        "preco": 9999.99,
+        "estoque": 5
+    },
+    "04001": {
+        "nome": "Xbox Series X",
+        "grupo": "04",
+        "preco": 2999.99,
+        "estoque": 6
+    },
+    "04002": {
+        "nome": "PS5",
+        "grupo": "04",
+        "preco": 2899.99,
+        "estoque": 4
+    },
+    "03002": {
+        "nome": "Samsung S23",
+        "grupo": "03",
+        "preco": 2999.99,
+        "estoque": 6
+    }
+}
